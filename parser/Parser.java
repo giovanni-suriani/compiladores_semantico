@@ -85,6 +85,8 @@ public class Parser {
     }
 
     private void match(int tag) throws IOException {
+        if (look.tag == 264)
+            System.out.println("if");
         if (look != null && look.tag == tag) {
             move();
         } else {

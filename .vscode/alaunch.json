@@ -17,7 +17,7 @@
             "request": "launch",
             "mainClass": "main.Main",
             "projectName": "Trabalho_Pratico_3935c5a7",
-            "args": ["teste1.txt"]
+            "args": [""]
         }
     ]
 }
