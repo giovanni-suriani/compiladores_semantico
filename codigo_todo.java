@@ -1,3 +1,414 @@
+package bak;
+
+// import lexer.*;
+import lexer.Lexer;
+import lexer.Tag;
+import lexer.Token;
+
+import java.io.IOException;
+
+/**
+ * Analisador sintático recursivo-descendente para a gramática
+ * fornecida no trabalho. Não gera AST – apenas valida a estrutura.
+ */
+public class Parser {
+
+    private final Lexer lex;
+    private Token look; // token corrente
+
+    /* --------------------- utilidades --------------------- */
+
+    public Parser(Lexer lex) throws IOException {
+        this.lex = lex;
+        move(); // carrega o primeiro token
+    }
+
+    /** Lê o próximo token do lexer. */
+    private void move() throws IOException {
+        look = lex.scan(); // pode vir null no EOF
+    }
+
+    /** Relata erro sintático e aborta. */
+    private void error(String msg) {
+        throw new ParserException(
+                "Erro sintático na linha " + Lexer.line + ": " + msg +
+                        " (encontrado: " + (look == null ? "EOF" : look) + ")");
+    }
+
+    /** Confere se o token atual possui a tag esperada e consome-o. */
+    private void match(int tag) throws IOException {
+        if (look != null && look.tag == tag) {
+            move();
+        } else {
+            error("esperado '" + tagToString(tag) + "'");
+        }
+    }
+
+    /** Apenas para mensagens de erro mais amigáveis. */
+    private static String tagToString(int tag) {
+        switch (tag) {
+            case Tag.PROGRAM:
+                return "program";
+            case Tag.BEGIN:
+                return "begin";
+            case Tag.END:
+                return "end";
+
+            case Tag.ID:
+                return "ID";
+            case Tag.NUM:
+                return "NUM";
+            case Tag.REAL:
+                return "REAL";
+            case Tag.CHAR_CONST:
+                return "CHAR_CONST";
+            case Tag.LITERAL:
+                return "LITERAL";
+
+            case Tag.COLON:
+                return ":";
+            case Tag.SEMICOLON:
+                return ";";
+            case Tag.COMMA:
+                return ",";
+            case Tag.LPAREN:
+                return "(";
+            case Tag.RPAREN:
+                return ")";
+            case Tag.PLUS:
+                return "+";
+            case Tag.MINUS:
+                return "-";
+            case Tag.TIMES:
+                return "*";
+            case Tag.DIV:
+                return "/";
+            case Tag.ASSIGN:
+                return "=";
+            // adicione outros conforme precisar
+            default:
+                if (tag < 128)
+                    return Character.toString((char) tag);
+                return "TAG(" + tag + ")";
+        }
+    }
+
+    /* ------------------------------------------------------ */
+    /* ------------ métodos correspondentes à gramática ----- */
+    /* ------------------------------------------------------ */
+
+    // entry-point
+    public void parse() throws IOException {
+        program(); // <program>
+        if (look != null)
+            error("tokens adicionais após 'end'");
+        System.out.println("Programa sintaticamente correto!");
+    }
+
+    /*
+     * ------------------------------------------------------------------
+     * GRAMMAR:
+     * program ::= program [decl-list] begin stmt-list end
+     * ------------------------------------------------------------------
+     */
+    private void program() throws IOException {
+        match(Tag.PROGRAM);
+        if (isTypeStarter()) { // opcional [decl-list]
+            declList();
+        }
+        match(Tag.BEGIN);
+        stmtList();
+        match(Tag.END);
+    }
+
+    /* decl-list ::= decl {decl} */
+    private void declList() throws IOException {
+        do {
+            decl();
+        } while (isTypeStarter());
+    }
+
+    /* decl ::= type ":" ident-list ";" */
+    private void decl() throws IOException {
+        type();
+        match(Tag.COLON);
+        identList();
+        match(Tag.SEMICOLON);
+    }
+
+    /* ident-list ::= identifier {"," identifier} */
+    private void identList() throws IOException {
+        match(Tag.ID);
+        while (look != null && look.tag == Tag.COMMA) {
+            match(Tag.COMMA);
+            match(Tag.ID);
+        }
+    }
+
+    /* type ::= int | float | char */
+    private void type() throws IOException {
+        switch (look.tag) {
+            case Tag.INT:
+                match(Tag.INT);
+                break;
+            case Tag.FLOAT:
+                match(Tag.FLOAT);
+                break;
+            case Tag.CHAR:
+                match(Tag.CHAR);
+                break;
+            default:
+                error("tipo esperado");
+        }
+    }
+
+    /* stmt-list ::= stmt {";" stmt} */
+    private void stmtList() throws IOException {
+        stmt();
+        while (look != null && look.tag == Tag.SEMICOLON) {
+            match(Tag.SEMICOLON);
+            stmt();
+        }
+    }
+
+    /*
+     * stmt ::= assign-stmt | if-stmt | while-stmt | repeat-stmt
+     * | read-stmt | write-stmt
+     */
+    private void stmt() throws IOException {
+        if (look == null)
+            error("instrução inesperada (EOF)");
+
+        switch (look.tag) {
+            case Tag.ID:
+                assignStmt();
+                break;
+            case Tag.IF:
+                ifStmt();
+                break;
+            case Tag.WHILE:
+                whileStmt();
+                break;
+            case Tag.REPEAT:
+                repeatStmt();
+                break;
+            case Tag.IN:
+                readStmt();
+                break;
+            case Tag.OUT:
+                writeStmt();
+                break;
+            default:
+                error("início de comando inválido");
+        }
+    }
+
+    /* assign-stmt ::= identifier "=" simple_expr */
+    private void assignStmt() throws IOException {
+        match(Tag.ID);
+        match(Tag.ASSIGN);
+        simpleExpr();
+    }
+
+    /*
+     * if-stmt:
+     * if condition then [decl-list] stmt-list end
+     * | if condition then [decl-list] stmt-list else [decl-list] stmt-list end
+     */
+    private void ifStmt() throws IOException {
+        match(Tag.IF);
+        condition();
+        match(Tag.THEN);
+        if (isTypeStarter())
+            declList();
+        stmtList();
+        if (look != null && look.tag == Tag.ELSE) {
+            match(Tag.ELSE);
+            if (isTypeStarter())
+                declList();
+            stmtList();
+        }
+        match(Tag.END);
+    }
+
+    /*
+     * while-stmt ::= stmt-prefix [decl-list] stmt-list end
+     * stmt-prefix ::= while condition do
+     */
+    private void whileStmt() throws IOException {
+        match(Tag.WHILE);
+        condition();
+        match(Tag.DO);
+        if (isTypeStarter())
+            declList();
+        stmtList();
+        match(Tag.END);
+    }
+
+    /*
+     * repeat-stmt ::= repeat [decl-list] stmt-list stmt-suffix
+     * stmt-suffix ::= until condition
+     */
+    private void repeatStmt() throws IOException {
+        match(Tag.REPEAT);
+        if (isTypeStarter())
+            declList();
+        stmtList();
+        match(Tag.UNTIL);
+        condition();
+    }
+
+    /* read-stmt ::= in "(" identifier ")" */
+    private void readStmt() throws IOException {
+        match(Tag.IN);
+        match(Tag.LPAREN);
+        match(Tag.ID);
+        match(Tag.RPAREN);
+    }
+
+    /* write-stmt ::= out "(" writable ")" */
+    private void writeStmt() throws IOException {
+        match(Tag.OUT);
+        match(Tag.LPAREN);
+        writable();
+        match(Tag.RPAREN);
+    }
+
+    private void writable() throws IOException {
+        if (look.tag == Tag.LITERAL) {
+            match(Tag.LITERAL);
+        } else {
+            simpleExpr();
+        }
+    }
+
+    /* condition ::= expression */
+    private void condition() throws IOException {
+        expression();
+    }
+
+    /* expression ::= simple-expr | simple-expr relop simple-expr */
+    private void expression() throws IOException {
+        simpleExpr();
+        if (isRelop(look)) {
+            relop();
+            simpleExpr();
+        }
+    }
+
+    /* simple-expr ::= term {addop term} */
+    private void simpleExpr() throws IOException {
+        term();
+        while (isAddop(look)) {
+            addop();
+            term();
+        }
+    }
+
+    /* term ::= factor-a {mulop factor-a} */
+    private void term() throws IOException {
+        factorA();
+        while (isMulop(look)) {
+            mulop();
+            factorA();
+        }
+    }
+
+    /* factor-a ::= factor | "!" factor | "-" factor */
+    private void factorA() throws IOException {
+        if (look.tag == '!') { // '!' é o próprio caractere
+            match('!');
+            factor();
+        } else if (look.tag == Tag.MINUS) {
+            match(Tag.MINUS);
+            factor();
+        } else {
+            factor();
+        }
+    }
+
+    /* factor ::= identifier | constant | "(" expression ")" */
+    private void factor() throws IOException {
+        switch (look.tag) {
+            case Tag.ID:
+                match(Tag.ID);
+                break;
+            case Tag.NUM:
+            case Tag.REAL:
+            case Tag.CHAR_CONST:
+                constant();
+                break;
+            case Tag.LPAREN:
+                match(Tag.LPAREN);
+                expression();
+                match(Tag.RPAREN);
+                break;
+            default:
+                error("fator esperado");
+        }
+    }
+
+    private void constant() throws IOException {
+        switch (look.tag) {
+            case Tag.NUM:
+                match(Tag.NUM);
+                break;
+            case Tag.REAL:
+                match(Tag.REAL);
+                break;
+            case Tag.CHAR_CONST:
+                match(Tag.CHAR_CONST);
+                break;
+            default:
+                error("constante esperada");
+        }
+    }
+
+    /* ------------------------ auxiliares ------------------------ */
+
+    private static boolean isRelop(Token t) {
+        if (t == null)
+            return false;
+        int tg = t.tag;
+        return tg == Tag.EQ || tg == Tag.GT || tg == Tag.GE ||
+                tg == Tag.LT || tg == Tag.LE || tg == Tag.NE;
+    }
+
+    private static boolean isAddop(Token t) {
+        if (t == null)
+            return false;
+        int tg = t.tag;
+        return tg == Tag.PLUS || tg == Tag.MINUS || tg == Tag.OR;
+    }
+
+    private static boolean isMulop(Token t) {
+        if (t == null)
+            return false;
+        int tg = t.tag;
+        return tg == Tag.TIMES || tg == Tag.DIV || tg == Tag.AND;
+    }
+
+    /**
+     * Retorna true se o token atual pode iniciar uma declaração (int|float|char).ds
+     */
+    private boolean isTypeStarter() {
+        return look != null &&
+                (look.tag == Tag.INT || look.tag == Tag.FLOAT || look.tag == Tag.CHAR);
+    }
+
+    /** Faz o consumo de um relop/addop/mulop (já verificado antes). */
+    private void relop() throws IOException {
+        match(look.tag);
+    }
+
+    private void addop() throws IOException {
+        match(look.tag);
+    }
+
+    private void mulop() throws IOException {
+        match(look.tag);
+    }
+}
 package lexer;
 
 public class CharConst extends Token {
@@ -20,236 +431,192 @@ import java.util.*;
 
 // A classe Lexer mapeia cadeias em palavras
 public class Lexer {
-    public static int line = 1; // contador de linhas
-    private char ch = ' '; // caractere lido do arquivo
-    private FileReader file;
+    public static int line = 1;              // contador de linhas
+    private char ch = ' ';                   // caractere lido do arquivo
+    private final FileReader file;
 
-    private Hashtable<String, Word> words = new Hashtable<>();
+    private final Hashtable<String, Word> words = new Hashtable<>();
 
-    /* Metodo para inserir palavras reservadas na HashTable */
-    private void reserve(Word w) {
-        words.put(w.getLexeme(), w); // lexema é a chave para entrada na HashTable
-    }
+    /* ----------------------------------------------------------
+     *  Construtor ­– carrega palavras‑chave na tabela
+     * ---------------------------------------------------------- */
+    private void reserve(Word w) { words.put(w.getLexeme(), w); }
 
-    /* Metodo construtor */
     public Lexer(String fileName) throws FileNotFoundException {
-        try {
-            file = new FileReader(fileName);
-        } catch (FileNotFoundException e) {
-            System.out.println("Arquivo não encontrado");
+        try { file = new FileReader(fileName); }
+        catch (FileNotFoundException e) {
+            System.err.println("Arquivo não encontrado");
             throw e;
         }
 
         // Palavras reservadas
-        reserve(new Word("if", Tag.IF));
+        reserve(new Word("if",      Tag.IF));
         reserve(new Word("program", Tag.PROGRAM));
-        reserve(new Word("begin", Tag.BEGIN));
-        reserve(new Word("end", Tag.END));
-        reserve(new Word("type", Tag.TYPE));
-        reserve(new Word("int", Tag.INT));
-        reserve(new Word("float", Tag.FLOAT));
-        reserve(new Word("char", Tag.CHAR));
-        reserve(new Word("bool", Tag.BOOL));
-        reserve(new Word("then", Tag.THEN));
-        reserve(new Word("else", Tag.ELSE));
-        reserve(new Word("while", Tag.WHILE));
-        reserve(new Word("do", Tag.DO));
-        reserve(new Word("repeat", Tag.REPEAT));
-        reserve(new Word("until", Tag.UNTIL));
-        reserve(new Word("in", Tag.IN));
-        reserve(new Word("out", Tag.OUT));
+        reserve(new Word("begin",   Tag.BEGIN));
+        reserve(new Word("end",     Tag.END));
+        reserve(new Word("type",    Tag.TYPE));
+        reserve(new Word("int",     Tag.INT));
+        reserve(new Word("float",   Tag.FLOAT));
+        reserve(new Word("char",    Tag.CHAR));
+        reserve(new Word("bool",    Tag.BOOL));
+        reserve(new Word("then",    Tag.THEN));
+        reserve(new Word("else",    Tag.ELSE));
+        reserve(new Word("while",   Tag.WHILE));
+        reserve(new Word("do",      Tag.DO));
+        reserve(new Word("repeat",  Tag.REPEAT));
+        reserve(new Word("until",   Tag.UNTIL));
+        reserve(new Word("in",      Tag.IN));
+        reserve(new Word("out",     Tag.OUT));
     }
 
-    /* Le o proximo caractere do arquivo */
+    /* ----------------------------------------------------------
+     *  Utilidades de leitura
+     * ---------------------------------------------------------- */
     private void readch() throws IOException {
         int r = file.read();
         ch = (r == -1) ? (char) -1 : (char) r;
     }
 
+    /** Cria token de 1 caractere e já avança o ponteiro. */
     private Token single(int tag) throws IOException {
-        Token t = new Token(tag); // cria o token
-        readch(); // avança para o próximo caractere
+        Token t = new Token(tag);
+        readch();
         return t;
     }
 
-    /* Le o proximo caractere do arquivo e verifica se eh igual a c */
+    /** Avança um caractere e retorna true se ele for ‘c’. */
     private boolean readch(char c) throws IOException {
         readch();
-        if (ch != c)
-            return false;
+        if (ch != c) return false;
         ch = ' ';
         return true;
     }
 
-    /*
-     * ------------------------------------------------------------------
-     * lexer/Lexer.java – trecho refatorado
-     * ------------------------------------------------------------------
-     */
-
-    /** Devolve o próximo token da entrada ou null no EOF. */
+    /* ==========================================================
+     *  Principal: devolve o próximo Token ou null (EOF)
+     * ========================================================== */
     public Token scan() throws IOException {
 
-        /* ---------- ignora espaços, tabs e quebras de linha ---------- */
+        /* ----- ignora espaços, tabs, CR, etc. ----- */
         for (;; readch()) {
-            if (ch == ' ' || ch == '\t' || ch == '\r' || ch == '\b')
-                continue;
-            else if (ch == '\n')
-                line++;
-            else
-                break;
+            if (ch == ' ' || ch == '\t' || ch == '\r' || ch == '\b') continue;
+            else if (ch == '\n') line++;
+            else break;
         }
 
-        /* ---------- comentários ---------- */
-        if (ch == '{') { // bloco { ... }
+        /* ----- comentários { … } ou % linha ----- */
+        if (ch == '{') {
             do {
                 readch();
                 if (ch == (char) -1)
                     throw new IOException("Erro léxico: comentário de bloco não fechado");
             } while (ch != '}');
-            readch(); // consome ‘}’
-            return scan(); // reinicia o processo
+            readch();            // consome '}'
+            return scan();       // recomeça
         }
-
-        if (ch == '%') { // linha %
-            do {
-                readch();
-            } while (ch != '\n' && ch != (char) -1);
-            line++;
-            readch(); // consome '\n'
+        if (ch == '%') {         // comentário de uma linha
+            do { readch(); }
+            while (ch != '\n' && ch != (char) -1);
+            line++; readch();
             return scan();
         }
 
-        /* ---------- operadores e delimitadores ---------- */
+        /* ------------------------------------------------------
+         *  Operadores & pontuação
+         *  (✅ corrigido: não usa single() depois de readch(c))
+         * ------------------------------------------------------ */
         switch (ch) {
-
-            /* compostos → usa readch(c) que já avança dentro dele */
             case '&':
-                if (readch('&'))
-                    return Word.and;
-                return single('&'); // devolve ‘&’
+                if (readch('&')) return Word.and;
+                return new Token('&');
             case '|':
-                if (readch('|'))
-                    return Word.or;
-                return single('|'); // devolve ‘|’
+                if (readch('|')) return Word.or;
+                return new Token('|');
             case '=':
-                if (readch('='))
-                    return Word.eq;
-                return single(Tag.ASSIGN); // ‘=’
+                if (readch('=')) return Word.eq;
+                return new Token(Tag.ASSIGN);
             case '!':
-                if (readch('='))
-                    return Word.ne;
-                return single('!'); // ‘!’
+                if (readch('=')) return Word.ne;
+                return new Token('!');
             case '<':
-                if (readch('='))
-                    return Word.le;
-                return single(Tag.LT); // ‘<’
+                if (readch('=')) return Word.le;
+                return new Token(Tag.LT);
             case '>':
-                if (readch('='))
-                    return Word.ge;
-                return single(Tag.GT); // ‘>’
+                if (readch('=')) return Word.ge;
+                return new Token(Tag.GT);
 
-            /* 1 caractere (usa helper single) */
-            case '+':
-                return single(Tag.PLUS);
-            case '-':
-                return single(Tag.MINUS);
-            case '*':
-                return single(Tag.TIMES);
-            case '/':
-                return single(Tag.DIV);
-            case ';':
-                return single(Tag.SEMICOLON);
-            case ':':
-                return single(Tag.COLON);
-            case ',':
-                return single(Tag.COMMA);
-            case '(':
-                return single(Tag.LPAREN);
-            case ')':
-                return single(Tag.RPAREN);
+            /* um único caractere (pode usar single) */
+            case '+': return single(Tag.PLUS);
+            case '-': return single(Tag.MINUS);
+            case '*': return single(Tag.TIMES);
+            case '/': return single(Tag.DIV);
+            case ';': return single(Tag.SEMICOLON);
+            case ':': return single(Tag.COLON);
+            case ',': return single(Tag.COMMA);
+            case '(': return single(Tag.LPAREN);
+            case ')': return single(Tag.RPAREN);
         }
 
-        /* ---------- constantes de caractere ---------- */
+        /* ----- constantes de caractere 'x' ----- */
         if (ch == '\'') {
-            readch(); // entra no conteúdo
+            readch();
             char valor = ch;
             readch();
-            if (ch == '\'') {
-                readch(); // consome a aspa final
-                return new CharConst(valor);
-            }
+            if (ch == '\'') { readch(); return new CharConst(valor); }
             throw new IOException("Erro léxico: caractere mal formado");
         }
 
-        /* ---------- literais de string ---------- */
+        /* ----- literais de string "..." ----- */
         if (ch == '"') {
             StringBuilder sb = new StringBuilder();
-            readch(); // entra no conteúdo
+            readch();
             while (ch != '"' && ch != '\n' && ch != (char) -1) {
-                sb.append(ch);
-                readch();
+                sb.append(ch); readch();
             }
-            if (ch == '"') {
-                readch(); // consome a aspa final
-                return new Literal(sb.toString());
-            }
+            if (ch == '"') { readch(); return new Literal(sb.toString()); }
             throw new IOException("Erro léxico: string mal formada");
         }
 
-        /* ---------- números ---------- */
+        /* ----- números ----- */
         if (Character.isDigit(ch)) {
-            int value = 0;
-            do {
-                value = 10 * value + Character.digit(ch, 10);
-                readch();
-            } while (Character.isDigit(ch));
+            int val = 0;
+            do { val = 10*val + Character.digit(ch,10); readch(); }
+            while (Character.isDigit(ch));
 
-            if (ch != '.')
-                return new Num(value); // inteiro
+            if (ch != '.') return new Num(val);
 
             /* ponto flutuante */
-            float x = value, d = 10;
-            readch(); // consome '.'
+            float x = val, d = 10;
+            readch();                    // consome '.'
             if (!Character.isDigit(ch))
-                throw new IOException("Erro léxico: ponto sem dígitos em constante float");
-
+                throw new IOException("Erro léxico: ponto sem dígitos em float");
             while (Character.isDigit(ch)) {
-                x += Character.digit(ch, 10) / d;
-                d *= 10;
-                readch();
+                x += Character.digit(ch,10) / d; d *= 10; readch();
             }
             return new Real(x);
         }
 
-        /* ---------- identificadores / palavras-chave ---------- */
+        /* ----- identificadores / palavras‑chave ----- */
         if (Character.isLetter(ch) || ch == '_') {
             StringBuilder sb = new StringBuilder();
-            do {
-                sb.append(ch);
-                readch();
-            } while (Character.isLetterOrDigit(ch) || ch == '_');
+            do { sb.append(ch); readch(); }
+            while (Character.isLetterOrDigit(ch) || ch == '_');
 
             String s = sb.toString().toLowerCase();
             Word w = words.get(s);
-            if (w != null)
-                return w; // palavra reservada
-
-            w = new Word(s, Tag.ID); // novo identificador
-            words.put(s, w);
+            if (w != null) return w;              // palavra reservada
+            w = new Word(s, Tag.ID); words.put(s, w);
             return w;
         }
 
-        /* ---------- fim de arquivo ---------- */
-        if (ch == (char) -1)
-            return null;
+        /* ----- fim de arquivo ----- */
+        if (ch == (char) -1) return null;
 
-        /* ---------- caractere isolado desconhecido ---------- */
+        /* caractere desconhecido isolado */
         Token t = new Token(ch);
-        readch(); // avança para evitar loop
+        readch();
         return t;
     }
-
 }
 package lexer;
 
@@ -472,10 +839,12 @@ public class Word extends Token {
 package main;
 
 import lexer.Lexer;
-import parser.Parser;
+import lexer.Token;
 import parser.ParserException;
+import parser.Parser;
 
 import java.io.IOException;
+
 
 public class Main {
     public static void main(String[] args) {
@@ -492,9 +861,13 @@ public class Main {
             // For testing purposes, replace with your file name
             // filename = "teste2.txt";
             // For testing purposes, replace with your file name
-            filename = "raw_testes/teste1.txt"; // For testing purposes, replace with your file name
+            filename = "teste3.txt"; // For testing purposes, replace with your file name
         try {
             Lexer lex = new Lexer(filename);
+            // Token t;
+            // while ((t = lex.scan()) != null) {
+            //     System.out.println("TOKEN: " + t);
+            // }
             Parser parser = new Parser(lex);
             parser.parse();
         } catch (ParserException | IOException e) {
@@ -504,13 +877,7 @@ public class Main {
 }
 
 // find -name "*.java" -exec cat {} + > codigo_todo.java
-// for dir in raw_testes primeira_modificada; do     for i in {1..5}; do         /usr/bin/env /usr/lib/jvm/java-17-openjdk-amd64/bin/java             -XX:+ShowCodeDetailsInExceptionMessages             -cp /home/gi/.config/Code/User/workspaceStorage/2e3b82d01d3e7ac12c7df6fd79e9be5f/redhat.java/jdt_ws/Trabalho_Pratico_3935c5a7/bin             main.Main $dir/teste$i.txt 2> $dir/resultados/$dir-erro$i;     done; donepackage parser;
-
-/** Exceção lançada quando ocorre erro sintático. */
-public class ParserException extends RuntimeException {
-    public ParserException(String msg) { super(msg); }
-}
-/*  ────────────────────────────────────────────────────────────────
+// for dir in raw_testes primeira_modificada; do     for i in {1..5}; do         /usr/bin/env /usr/lib/jvm/java-17-openjdk-amd64/bin/java             -XX:+ShowCodeDetailsInExceptionMessages             -cp /home/gi/.config/Code/User/workspaceStorage/2e3b82d01d3e7ac12c7df6fd79e9be5f/redhat.java/jdt_ws/Trabalho_Pratico_3935c5a7/bin             main.Main $dir/teste$i.txt 2> $dir/resultados/$dir-erro$i;     done; done/*  ────────────────────────────────────────────────────────────────
  *  Parser.java  –  análise sintática + semântica “on‑the‑fly”
  *                 Usa ParserException para erros de sintaxe
  *                 e SemanticException para violações semânticas.
@@ -597,6 +964,8 @@ public class Parser {
     }
 
     private void match(int tag) throws IOException {
+        // if (look.tag == 264)
+        //     System.out.println("if");
         if (look != null && look.tag == tag) {
             move();
         } else {
@@ -1057,10 +1426,12 @@ public class Parser {
         }
     }
 }
-// ─── parser/Type.java ────────────────────────────────────────────────
 package parser;
 
-public enum Type { INT, FLOAT, CHAR, BOOL, ERROR }
+/** Exceção lançada quando ocorre erro sintático. */
+public class ParserException extends RuntimeException {
+    public ParserException(String msg) { super(msg); }
+}
 package parser;
 
 public class SemanticException extends RuntimeException {
@@ -1073,414 +1444,7 @@ public class SemanticException extends RuntimeException {
 
     public int getLine() { return line; }
 }
+// ─── parser/Type.java ────────────────────────────────────────────────
 package parser;
 
-// import lexer.*;
-import lexer.Lexer;
-import lexer.Tag;
-import lexer.Token;
-
-import java.io.IOException;
-
-/**
- * Analisador sintático recursivo-descendente para a gramática
- * fornecida no trabalho. Não gera AST – apenas valida a estrutura.
- */
-public class Parser {
-
-    private final Lexer lex;
-    private Token look; // token corrente
-
-    /* --------------------- utilidades --------------------- */
-
-    public Parser(Lexer lex) throws IOException {
-        this.lex = lex;
-        move(); // carrega o primeiro token
-    }
-
-    /** Lê o próximo token do lexer. */
-    private void move() throws IOException {
-        look = lex.scan(); // pode vir null no EOF
-    }
-
-    /** Relata erro sintático e aborta. */
-    private void error(String msg) {
-        throw new ParserException(
-                "Erro sintático na linha " + Lexer.line + ": " + msg +
-                        " (encontrado: " + (look == null ? "EOF" : look) + ")");
-    }
-
-    /** Confere se o token atual possui a tag esperada e consome-o. */
-    private void match(int tag) throws IOException {
-        if (look != null && look.tag == tag) {
-            move();
-        } else {
-            error("esperado '" + tagToString(tag) + "'");
-        }
-    }
-
-    /** Apenas para mensagens de erro mais amigáveis. */
-    private static String tagToString(int tag) {
-        switch (tag) {
-            case Tag.PROGRAM:
-                return "program";
-            case Tag.BEGIN:
-                return "begin";
-            case Tag.END:
-                return "end";
-
-            case Tag.ID:
-                return "ID";
-            case Tag.NUM:
-                return "NUM";
-            case Tag.REAL:
-                return "REAL";
-            case Tag.CHAR_CONST:
-                return "CHAR_CONST";
-            case Tag.LITERAL:
-                return "LITERAL";
-
-            case Tag.COLON:
-                return ":";
-            case Tag.SEMICOLON:
-                return ";";
-            case Tag.COMMA:
-                return ",";
-            case Tag.LPAREN:
-                return "(";
-            case Tag.RPAREN:
-                return ")";
-            case Tag.PLUS:
-                return "+";
-            case Tag.MINUS:
-                return "-";
-            case Tag.TIMES:
-                return "*";
-            case Tag.DIV:
-                return "/";
-            case Tag.ASSIGN:
-                return "=";
-            // adicione outros conforme precisar
-            default:
-                if (tag < 128)
-                    return Character.toString((char) tag);
-                return "TAG(" + tag + ")";
-        }
-    }
-
-    /* ------------------------------------------------------ */
-    /* ------------ métodos correspondentes à gramática ----- */
-    /* ------------------------------------------------------ */
-
-    // entry-point
-    public void parse() throws IOException {
-        program(); // <program>
-        if (look != null)
-            error("tokens adicionais após 'end'");
-        System.out.println("Programa sintaticamente correto!");
-    }
-
-    /*
-     * ------------------------------------------------------------------
-     * GRAMMAR:
-     * program ::= program [decl-list] begin stmt-list end
-     * ------------------------------------------------------------------
-     */
-    private void program() throws IOException {
-        match(Tag.PROGRAM);
-        if (isTypeStarter()) { // opcional [decl-list]
-            declList();
-        }
-        match(Tag.BEGIN);
-        stmtList();
-        match(Tag.END);
-    }
-
-    /* decl-list ::= decl {decl} */
-    private void declList() throws IOException {
-        do {
-            decl();
-        } while (isTypeStarter());
-    }
-
-    /* decl ::= type ":" ident-list ";" */
-    private void decl() throws IOException {
-        type();
-        match(Tag.COLON);
-        identList();
-        match(Tag.SEMICOLON);
-    }
-
-    /* ident-list ::= identifier {"," identifier} */
-    private void identList() throws IOException {
-        match(Tag.ID);
-        while (look != null && look.tag == Tag.COMMA) {
-            match(Tag.COMMA);
-            match(Tag.ID);
-        }
-    }
-
-    /* type ::= int | float | char */
-    private void type() throws IOException {
-        switch (look.tag) {
-            case Tag.INT:
-                match(Tag.INT);
-                break;
-            case Tag.FLOAT:
-                match(Tag.FLOAT);
-                break;
-            case Tag.CHAR:
-                match(Tag.CHAR);
-                break;
-            default:
-                error("tipo esperado");
-        }
-    }
-
-    /* stmt-list ::= stmt {";" stmt} */
-    private void stmtList() throws IOException {
-        stmt();
-        while (look != null && look.tag == Tag.SEMICOLON) {
-            match(Tag.SEMICOLON);
-            stmt();
-        }
-    }
-
-    /*
-     * stmt ::= assign-stmt | if-stmt | while-stmt | repeat-stmt
-     * | read-stmt | write-stmt
-     */
-    private void stmt() throws IOException {
-        if (look == null)
-            error("instrução inesperada (EOF)");
-
-        switch (look.tag) {
-            case Tag.ID:
-                assignStmt();
-                break;
-            case Tag.IF:
-                ifStmt();
-                break;
-            case Tag.WHILE:
-                whileStmt();
-                break;
-            case Tag.REPEAT:
-                repeatStmt();
-                break;
-            case Tag.IN:
-                readStmt();
-                break;
-            case Tag.OUT:
-                writeStmt();
-                break;
-            default:
-                error("início de comando inválido");
-        }
-    }
-
-    /* assign-stmt ::= identifier "=" simple_expr */
-    private void assignStmt() throws IOException {
-        match(Tag.ID);
-        match(Tag.ASSIGN);
-        simpleExpr();
-    }
-
-    /*
-     * if-stmt:
-     * if condition then [decl-list] stmt-list end
-     * | if condition then [decl-list] stmt-list else [decl-list] stmt-list end
-     */
-    private void ifStmt() throws IOException {
-        match(Tag.IF);
-        condition();
-        match(Tag.THEN);
-        if (isTypeStarter())
-            declList();
-        stmtList();
-        if (look != null && look.tag == Tag.ELSE) {
-            match(Tag.ELSE);
-            if (isTypeStarter())
-                declList();
-            stmtList();
-        }
-        match(Tag.END);
-    }
-
-    /*
-     * while-stmt ::= stmt-prefix [decl-list] stmt-list end
-     * stmt-prefix ::= while condition do
-     */
-    private void whileStmt() throws IOException {
-        match(Tag.WHILE);
-        condition();
-        match(Tag.DO);
-        if (isTypeStarter())
-            declList();
-        stmtList();
-        match(Tag.END);
-    }
-
-    /*
-     * repeat-stmt ::= repeat [decl-list] stmt-list stmt-suffix
-     * stmt-suffix ::= until condition
-     */
-    private void repeatStmt() throws IOException {
-        match(Tag.REPEAT);
-        if (isTypeStarter())
-            declList();
-        stmtList();
-        match(Tag.UNTIL);
-        condition();
-    }
-
-    /* read-stmt ::= in "(" identifier ")" */
-    private void readStmt() throws IOException {
-        match(Tag.IN);
-        match(Tag.LPAREN);
-        match(Tag.ID);
-        match(Tag.RPAREN);
-    }
-
-    /* write-stmt ::= out "(" writable ")" */
-    private void writeStmt() throws IOException {
-        match(Tag.OUT);
-        match(Tag.LPAREN);
-        writable();
-        match(Tag.RPAREN);
-    }
-
-    private void writable() throws IOException {
-        if (look.tag == Tag.LITERAL) {
-            match(Tag.LITERAL);
-        } else {
-            simpleExpr();
-        }
-    }
-
-    /* condition ::= expression */
-    private void condition() throws IOException {
-        expression();
-    }
-
-    /* expression ::= simple-expr | simple-expr relop simple-expr */
-    private void expression() throws IOException {
-        simpleExpr();
-        if (isRelop(look)) {
-            relop();
-            simpleExpr();
-        }
-    }
-
-    /* simple-expr ::= term {addop term} */
-    private void simpleExpr() throws IOException {
-        term();
-        while (isAddop(look)) {
-            addop();
-            term();
-        }
-    }
-
-    /* term ::= factor-a {mulop factor-a} */
-    private void term() throws IOException {
-        factorA();
-        while (isMulop(look)) {
-            mulop();
-            factorA();
-        }
-    }
-
-    /* factor-a ::= factor | "!" factor | "-" factor */
-    private void factorA() throws IOException {
-        if (look.tag == '!') { // '!' é o próprio caractere
-            match('!');
-            factor();
-        } else if (look.tag == Tag.MINUS) {
-            match(Tag.MINUS);
-            factor();
-        } else {
-            factor();
-        }
-    }
-
-    /* factor ::= identifier | constant | "(" expression ")" */
-    private void factor() throws IOException {
-        switch (look.tag) {
-            case Tag.ID:
-                match(Tag.ID);
-                break;
-            case Tag.NUM:
-            case Tag.REAL:
-            case Tag.CHAR_CONST:
-                constant();
-                break;
-            case Tag.LPAREN:
-                match(Tag.LPAREN);
-                expression();
-                match(Tag.RPAREN);
-                break;
-            default:
-                error("fator esperado");
-        }
-    }
-
-    private void constant() throws IOException {
-        switch (look.tag) {
-            case Tag.NUM:
-                match(Tag.NUM);
-                break;
-            case Tag.REAL:
-                match(Tag.REAL);
-                break;
-            case Tag.CHAR_CONST:
-                match(Tag.CHAR_CONST);
-                break;
-            default:
-                error("constante esperada");
-        }
-    }
-
-    /* ------------------------ auxiliares ------------------------ */
-
-    private static boolean isRelop(Token t) {
-        if (t == null)
-            return false;
-        int tg = t.tag;
-        return tg == Tag.EQ || tg == Tag.GT || tg == Tag.GE ||
-                tg == Tag.LT || tg == Tag.LE || tg == Tag.NE;
-    }
-
-    private static boolean isAddop(Token t) {
-        if (t == null)
-            return false;
-        int tg = t.tag;
-        return tg == Tag.PLUS || tg == Tag.MINUS || tg == Tag.OR;
-    }
-
-    private static boolean isMulop(Token t) {
-        if (t == null)
-            return false;
-        int tg = t.tag;
-        return tg == Tag.TIMES || tg == Tag.DIV || tg == Tag.AND;
-    }
-
-    /**
-     * Retorna true se o token atual pode iniciar uma declaração (int|float|char).ds
-     */
-    private boolean isTypeStarter() {
-        return look != null &&
-                (look.tag == Tag.INT || look.tag == Tag.FLOAT || look.tag == Tag.CHAR);
-    }
-
-    /** Faz o consumo de um relop/addop/mulop (já verificado antes). */
-    private void relop() throws IOException {
-        match(look.tag);
-    }
-
-    private void addop() throws IOException {
-        match(look.tag);
-    }
-
-    private void mulop() throws IOException {
-        match(look.tag);
-    }
-}
+public enum Type { INT, FLOAT, CHAR, BOOL, ERROR }
