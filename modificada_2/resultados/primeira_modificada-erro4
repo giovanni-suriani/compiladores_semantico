@@ -1,9 +1,9 @@
-Exception in thread "main" parser.SemanticException: Erro semântico na linha 9: identificador 'read' não declarado
+Exception in thread "main" parser.SemanticException: Erro semântico na linha 3: identificador 'a' não declarado
 	at parser.Parser.errorSemantic(Parser.java:84)
 	at parser.Parser.lookup(Parser.java:63)
 	at parser.Parser.assignStmt(Parser.java:216)
 	at parser.Parser.stmt(Parser.java:190)
-	at parser.Parser.stmtList(Parser.java:177)
+	at parser.Parser.stmtList(Parser.java:174)
 	at parser.Parser.program(Parser.java:122)
 	at parser.Parser.parse(Parser.java:103)
-	at main.Main.main(Main.java:34)
+	at main.Main.main(Main.java:33)
