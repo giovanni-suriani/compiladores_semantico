@@ -25,12 +25,12 @@ public class Main {
             filename = "teste3.txt"; // For testing purposes, replace with your file name
         try {
             Lexer lex = new Lexer(filename);
-            Token t;
-            while ((t = lex.scan()) != null) {
-                System.out.println("TOKEN: " + t);
-            }
-            // Parser parser = new Parser(lex);
-            // parser.parse();
+            // Token t;
+            // while ((t = lex.scan()) != null) {
+            //     System.out.println("TOKEN: " + t);
+            // }
+            Parser parser = new Parser(lex);
+            parser.parse();
         } catch (ParserException | IOException e) {
             System.err.println(e.getMessage());
         }
