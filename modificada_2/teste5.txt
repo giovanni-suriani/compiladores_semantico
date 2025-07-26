@@ -1,4 +1,5 @@
 program
+begin
 declare
 inteiro: pontuacao, pontuacaoMaxina, disponibilidade;
 char: pontuacaoMinima

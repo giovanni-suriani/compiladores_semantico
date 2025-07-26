@@ -2,8 +2,8 @@ program
 float: raio, area;
 begin
 repeat
-in(raio);
 char: resposta;
+in(raio);
 if (raio > 0.0) then
 area = 3. * raio * raio;
 out (area);

@@ -9,6 +9,6 @@ aux = b;
 b = a;
 a = aux
 end;
-out(a;
+out(a);
 out(b)
 end

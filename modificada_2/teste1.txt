@@ -8,7 +8,7 @@ in (a);
 out("Digite o valor de c:");
 in (ch);
 b = 10;
-result = (a * ch)/(b 5 – 345.27);
+result = (a * ch)/(b – 345.27);
 out("O resultado e: ");
 out(result);
 result = result + ch;
