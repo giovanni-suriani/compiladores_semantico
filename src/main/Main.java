@@ -23,7 +23,7 @@ public class Main {
             // For testing purposes, replace with your file name
             // filename = "teste2.txt";
             // For testing purposes, replace with your file name
-            filename = "teste4.txt"; // For testing purposes, replace with your file name
+            filename = "teste2.txt"; // For testing purposes, replace with your file name
         try {
             Lexer lex = new Lexer(filename);
             // Token t;
@@ -40,5 +40,8 @@ public class Main {
 
 // find -name "*.java" -exec cat {} + > codigo_todo.java
 // for dir in raw_testes primeira_modificada; do     for i in {1..5}; do         /usr/bin/env /usr/lib/jvm/java-17-openjdk-amd64/bin/java             -XX:+ShowCodeDetailsInExceptionMessages             -cp /home/gi/.config/Code/User/workspaceStorage/2e3b82d01d3e7ac12c7df6fd79e9be5f/redhat.java/jdt_ws/Trabalho_Pratico_3935c5a7/bin             main.Main $dir/teste$i.txt 2> $dir/resultados/$dir-erro$i;     done; done
+
+// for dir in modificada_6; do  # pastas-origem dos testes
+//   for i in {2,4,5}; do     /usr/bin/env /usr/lib/jvm/java-17-openjdk-amd64/bin/java       -XX:+ShowCodeDetailsInExceptionMessages       -cp /home/gi/.config/Code/User/workspaceStorage/2e3b82d01d3e7ac12c7df6fd79e9be5f/redhat.java/jdt_ws/Trabalho_Pratico_3935c5a7/bin       main.Main "$dir/teste$i.txt"       2> "$dir/resultados/$dir-erro$i";   done; done
 
 // rm -rf /home/gi/Desktop/Semestre8/Compiladores/Trabalho_Pratico/modificada_3/resultados && mkdir /home/gi/Desktop/Semestre8/Compiladores/Trabalho_Pratico/modificada_3/resultados

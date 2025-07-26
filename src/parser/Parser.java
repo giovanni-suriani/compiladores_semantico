@@ -86,7 +86,7 @@ public class Parser {
 
     private void match(int tag) throws IOException {
         // if (look.tag == 264)
-        //     System.out.println("if");
+        // System.out.println("if");
         if (look != null && look.tag == tag) {
             move();
         } else {
@@ -434,7 +434,19 @@ public class Parser {
     }
 
     private static boolean isComparable(Type a, Type b) {
-        try {
+        /*
+         * Permite:
+         * – comparações numéricas (INT/FLOAT entre si);
+         * – INT × CHAR (coerção ASCII);
+         * – CHAR × CHAR ← acrescentado agora
+         */
+        if (a == Type.CHAR && b == Type.CHAR)
+            return true;
+
+        if ((a == Type.CHAR && b == Type.INT) || (a == Type.INT && b == Type.CHAR))
+            return true;
+
+        try { // cobre INT×INT, INT×FLOAT, FLOAT×FLOAT
             arithmeticResult(a, b);
             return true;
         } catch (SemanticException e) {
