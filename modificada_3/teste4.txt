@@ -1,6 +1,6 @@
 program
-int: a, b, c, maior;
 begin
+int: a, b, c, maior, outro;
 repeat
 out("A");
 in(a);
