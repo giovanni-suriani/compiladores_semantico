@@ -23,7 +23,7 @@ public class Main {
             // For testing purposes, replace with your file name
             // filename = "teste2.txt";
             // For testing purposes, replace with your file name
-            filename = "teste1.txt"; // For testing purposes, replace with your file name
+            filename = "teste4.txt"; // For testing purposes, replace with your file name
         try {
             Lexer lex = new Lexer(filename);
             // Token t;

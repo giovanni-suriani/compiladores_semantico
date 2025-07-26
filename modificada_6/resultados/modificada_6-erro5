@@ -1,0 +1,8 @@
+Exception in thread "main" parser.SemanticException: Erro semântico na linha 6: tipo da expressão (INT) incompatível com 'pontuacaominima' (CHAR)
+	at parser.Parser.errorSemantic(Parser.java:84)
+	at parser.Parser.assignStmt(Parser.java:220)
+	at parser.Parser.stmt(Parser.java:190)
+	at parser.Parser.stmtList(Parser.java:177)
+	at parser.Parser.program(Parser.java:122)
+	at parser.Parser.parse(Parser.java:103)
+	at main.Main.main(Main.java:34)
