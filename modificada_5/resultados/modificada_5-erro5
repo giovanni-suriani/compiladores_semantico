@@ -1,0 +1,8 @@
+Exception in thread "main" parser.SemanticException: Erro semântico na linha 5: tipo da expressão (CHAR) incompatível com 'disponibilidade' (INT)
+	at parser.Parser.errorSemantic(Parser.java:84)
+	at parser.Parser.assignStmt(Parser.java:220)
+	at parser.Parser.stmt(Parser.java:190)
+	at parser.Parser.stmtList(Parser.java:174)
+	at parser.Parser.program(Parser.java:122)
+	at parser.Parser.parse(Parser.java:103)
+	at main.Main.main(Main.java:34)
