@@ -9,7 +9,7 @@ in(b);
 out("C");
 in(c);
 %Verifica o maior
-if ( (a>b) and (a>c) ) end
+if ( (a>b) && (a>c) ) end
 maior = a
 else
 if (b>c) then
